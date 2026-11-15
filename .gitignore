@@ -1,0 +1,20 @@
+# segredos e estado local
+.env
+*.db
+rascunhos/
+logs/
+
+# planilhas fora de sample_data nunca entram (podem ter dado real)
+*.csv
+*.xlsx
+!sample_data/*.csv
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+dist/
+*.egg-info/
