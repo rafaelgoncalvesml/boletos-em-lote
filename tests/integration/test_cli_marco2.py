@@ -1,7 +1,3 @@
-import importlib.util
-from datetime import date
-from pathlib import Path
-
 import pytest
 from typer.testing import CliRunner
 
@@ -10,33 +6,6 @@ from boletos.gateway.fake import FakeGateway
 
 pytestmark = pytest.mark.integration
 runner = CliRunner()
-RAIZ = Path(__file__).resolve().parents[2]
-
-
-def _script():
-    spec = importlib.util.spec_from_file_location("gerar_exemplo", RAIZ / "scripts" / "gerar_exemplo.py")
-    modulo = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(modulo)
-    return modulo
-
-
-@pytest.fixture
-def ambiente(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    for var in ("ASAAS_API_KEY", "ANTHROPIC_API_KEY", "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS"):
-        monkeypatch.delenv(var, raising=False)
-    monkeypatch.setenv("BOLETOS_DB", str(tmp_path / "cli.db"))
-    monkeypatch.setenv("BOLETOS_RASCUNHOS", str(tmp_path / "rascunhos"))
-    monkeypatch.setenv("BOLETOS_LOGS", str(tmp_path / "logs"))
-    monkeypatch.setenv("PAUSA_ENTRE_REQ_MS", "0")
-    return tmp_path
-
-
-@pytest.fixture
-def planilha(ambiente):
-    caminho = ambiente / "clientes.csv"
-    _script().escrever(caminho, date.today())
-    return caminho
 
 
 def test_importar_dry_run_lista_rejeicoes_e_nao_cria_lote(ambiente, planilha):

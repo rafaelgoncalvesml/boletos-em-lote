@@ -16,6 +16,8 @@ from boletos.erros import EntradaRecusada, ErroBoletos
 from boletos.gateway.base import BillingGateway
 from boletos.gateway.fake import FakeGateway
 from boletos.logs import configurar_logs
+from boletos.mail.sender import SmtpSender
+from boletos.privacidade import mascarar_email
 from boletos.store.db import Banco
 
 app = typer.Typer(
@@ -142,6 +144,84 @@ def reprocessar_cmd(cobranca: int = typer.Option(..., "--cobranca", help="ID da 
     with _banco(cfg) as banco:
         c = lote_mod.reprocessar(banco, cobranca)
         typer.echo(f"Cobrança {c.id} voltou para {c.estado.value}.")
+
+
+def _redator(cfg: Config, sem_claude: bool):
+    if sem_claude:
+        return None
+    if not cfg.anthropic_api_key:
+        typer.echo("Sem ANTHROPIC_API_KEY: os e-mails usam o modelo fixo.")
+        return None
+    import anthropic
+
+    from boletos.mail.composer import RedatorClaude
+
+    cliente = anthropic.Anthropic(api_key=cfg.anthropic_api_key, timeout=20.0, max_retries=1)
+    return RedatorClaude(cliente, cfg.claude_model)
+
+
+def _sender(cfg: Config) -> SmtpSender:
+    return SmtpSender(cfg.smtp_host, cfg.smtp_port, cfg.smtp_user, cfg.smtp_pass)
+
+
+@app.command("rascunhos")
+@comando
+def rascunhos_cmd(
+    lote: int = typer.Option(..., "--lote"),
+    sem_claude: bool = typer.Option(False, "--sem-claude", help="Usa só o modelo fixo de e-mail."),
+) -> None:
+    """Gera os e-mails como rascunhos .eml."""
+    cfg = _config("rascunhos")
+    with _banco(cfg) as banco:
+        _exigir_lote(banco, lote)
+        res = lote_mod.gerar_rascunhos(banco, lote, cfg, _redator(cfg, sem_claude))
+        typer.echo(
+            f"{res.gerados} rascunhos gerados ({res.pelo_claude} com Claude, {res.modelo_fixo} com modelo fixo), "
+            f"{res.erros} com erro. Revise os arquivos em {cfg.rascunhos_dir / str(lote)}.\n"
+        )
+        _imprimir_resumo(banco, lote)
+
+
+@app.command("aprovar")
+@comando
+def aprovar_cmd(
+    lote: int | None = typer.Option(None, "--lote", help="Aprova todos os rascunhos do lote."),
+    cobranca: int | None = typer.Option(None, "--cobranca", help="Aprova uma cobrança."),
+) -> None:
+    """Libera rascunhos para envio."""
+    cfg = _config("aprovar")
+    with _banco(cfg) as banco:
+        if lote is not None:
+            _exigir_lote(banco, lote)
+        total = lote_mod.aprovar(banco, lote_id=lote, cobranca_id=cobranca)
+        typer.echo(f"{total} cobranças aprovadas.\n")
+        alvo = lote if lote is not None else banco.obter(cobranca).lote_id
+        _imprimir_resumo(banco, alvo)
+
+
+@app.command("enviar")
+@comando
+def enviar_cmd(
+    lote: int = typer.Option(..., "--lote"),
+    confirmar: bool = typer.Option(False, "--confirmar", help="Sem isso, só lista o que seria enviado."),
+    reenviar: bool = typer.Option(False, "--reenviar", help="Inclui cobranças já enviadas."),
+) -> None:
+    """Envia as aprovadas."""
+    cfg = _config("enviar", confirmar=confirmar)
+    with _banco(cfg) as banco:
+        _exigir_lote(banco, lote)
+        remetente = _sender(cfg) if confirmar else None
+        res = lote_mod.enviar(banco, lote, remetente, confirmar=confirmar, reenviar=reenviar)
+        if not confirmar:
+            typer.echo(f"Enviaria {len(res.previstas)} e-mails (use --confirmar para enviar):")
+            for cid in res.previstas:
+                typer.echo(f"  cobrança {cid} para {mascarar_email(banco.obter(cid).cliente_email)}")
+            return
+        typer.echo(f"Enviadas: {res.enviadas}, falhas: {res.falhas}.\n")
+        _imprimir_resumo(banco, lote)
+        if res.falhas:
+            typer.echo("Algumas cobranças continuam aprovadas. Repita o comando depois de conferir o SMTP.", err=True)
+            raise typer.Exit(1)
 
 
 if __name__ == "__main__":

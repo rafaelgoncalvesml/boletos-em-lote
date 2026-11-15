@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import smtplib
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
@@ -14,6 +15,7 @@ from boletos.erros import CredencialRecusada, EntradaRecusada, LotePausado
 from boletos.gateway.base import BillingGateway, ErroCredencial, ErroPermanente, ErroTemporario
 from boletos.ingest.planilha import ler_planilha
 from boletos.mail.composer import Email, Redator, montar_email
+from boletos.mail.sender import Sender
 from boletos.models import Cliente, Cobranca, Emissao, Estado, LinhaValida, Rejeicao, chave_da_linha
 from boletos.store.db import Banco
 from boletos.validation.regras import validar_linha
@@ -296,4 +298,67 @@ def gerar_rascunhos(banco: Banco, lote_id: int, cfg: Config, redator: Redator | 
             resultado.pelo_claude += 1
         else:
             resultado.modelo_fixo += 1
+    return resultado
+
+
+def aprovar(banco: Banco, *, lote_id: int | None = None, cobranca_id: int | None = None) -> int:
+    if (lote_id is None) == (cobranca_id is None):
+        raise EntradaRecusada("Informe --lote ou --cobranca, só um dos dois.")
+    if cobranca_id is not None:
+        try:
+            c = banco.obter(cobranca_id)
+        except KeyError:
+            raise EntradaRecusada(f"A cobrança {cobranca_id} não existe.") from None
+        if c.estado != Estado.RASCUNHO:
+            raise EntradaRecusada(f"A cobrança {cobranca_id} está em {c.estado.value}; só rascunho pode ser aprovado.")
+        alvos = [c]
+    else:
+        alvos = banco.listar(lote_id, Estado.RASCUNHO)
+    for c in alvos:
+        with banco.transacao():
+            banco.transicionar(c.id, Estado.APROVADA, detalhe="aprovada pelo usuário")
+            banco.marcar_aprovado(c.id)
+    return len(alvos)
+
+
+@dataclass
+class ResultadoEnvio:
+    previstas: list[int]
+    enviadas: int = 0
+    falhas: int = 0
+    reenvios: int = 0
+    confirmado: bool = False
+
+
+def enviar(
+    banco: Banco, lote_id: int, sender: Sender | None, *, confirmar: bool = False, reenviar: bool = False
+) -> ResultadoEnvio:
+    alvos = banco.listar(lote_id, Estado.APROVADA)
+    if reenviar:
+        alvos += banco.listar(lote_id, Estado.ENVIADA)
+    resultado = ResultadoEnvio(previstas=[c.id for c in alvos], confirmado=confirmar)
+    if not confirmar:
+        return resultado
+    if sender is None:
+        raise ValueError("sender é obrigatório com confirmar=True")
+    for c in alvos:
+        envio = banco.obter_envio(c.id)
+        try:
+            if envio is None:
+                raise OSError("cobrança sem rascunho gravado")
+            sender.enviar(Path(envio["caminho_rascunho"]))
+        except (OSError, smtplib.SMTPException) as erro:
+            banco.registrar_evento(lote_id, "erro_envio", str(erro)[:200], cobranca_id=c.id)
+            if envio is not None:
+                banco.registrar_erro_envio(c.id, str(erro))
+            resultado.falhas += 1
+            continue
+        with banco.transacao():
+            if c.estado == Estado.APROVADA:
+                banco.transicionar(c.id, Estado.ENVIADA, detalhe="e-mail enviado")
+            else:
+                banco.registrar_evento(lote_id, "reenvio", "e-mail reenviado", cobranca_id=c.id)
+                resultado.reenvios += 1
+            banco.marcar_enviado(c.id)
+        resultado.enviadas += 1
     return resultado
