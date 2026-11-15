@@ -44,6 +44,8 @@ markers = [
 
 [tool.ruff]
 line-length = 120
+# o ruff 0.17 também formata blocos de código dentro de .md; os documentos não entram
+extend-exclude = ["docs"]
 target-version = "py312"
 
 [tool.ruff.lint]
