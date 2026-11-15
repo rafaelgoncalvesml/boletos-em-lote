@@ -54,7 +54,8 @@ def porta_livre() -> int:
 def servidor_smtp():
     captura = Captura()
     porta = porta_livre()
-    controller = Controller(captura, hostname="127.0.0.1", port=porta)
+    # server_hostname fixo evita um getfqdn por conexão do lado do servidor
+    controller = Controller(captura, hostname="127.0.0.1", port=porta, server_hostname="localhost")
     controller.start()
     yield captura, porta
     controller.stop()
