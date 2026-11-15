@@ -6,12 +6,14 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import date
+from email.message import EmailMessage
 from pathlib import Path
 
 from boletos.config import Config
 from boletos.erros import CredencialRecusada, EntradaRecusada, LotePausado
 from boletos.gateway.base import BillingGateway, ErroCredencial, ErroPermanente, ErroTemporario
 from boletos.ingest.planilha import ler_planilha
+from boletos.mail.composer import Email, Redator, montar_email
 from boletos.models import Cliente, Cobranca, Emissao, Estado, LinhaValida, Rejeicao, chave_da_linha
 from boletos.store.db import Banco
 from boletos.validation.regras import validar_linha
@@ -241,3 +243,57 @@ def reprocessar(banco: Banco, cobranca_id: int) -> Cobranca:
     if c.estado != Estado.ERRO:
         raise EntradaRecusada(f"A cobrança {cobranca_id} está em {c.estado.value}; só cobrança em erro é reprocessada.")
     return banco.transicionar(cobranca_id, Estado.VALIDADA, detalhe="reprocessar")
+
+
+@dataclass
+class ResultadoRascunhos:
+    gerados: int = 0
+    pelo_claude: int = 0
+    modelo_fixo: int = 0
+    erros: int = 0
+
+
+def _gravar_eml(pasta: Path, c: Cobranca, email: Email, remetente: str) -> Path:
+    msg = EmailMessage()
+    msg["From"] = remetente
+    msg["To"] = c.cliente_email  # levanta ValueError se tiver quebra de linha (injeção de cabeçalho)
+    msg["Subject"] = email.assunto
+    msg["X-Boletos-Origem"] = email.origem
+    msg.set_content(email.corpo, charset="utf-8", cte="quoted-printable")
+    caminho = pasta / f"{c.id:05d}.eml"
+    caminho.write_bytes(msg.as_bytes())
+    return caminho
+
+
+def gerar_rascunhos(banco: Banco, lote_id: int, cfg: Config, redator: Redator | None) -> ResultadoRascunhos:
+    pasta = cfg.rascunhos_dir / str(lote_id)
+    pasta.mkdir(parents=True, exist_ok=True)
+    resultado = ResultadoRascunhos()
+    teto_avisado = False
+    for c in banco.listar(lote_id, Estado.EMITIDA):
+        usar = redator
+        if usar is not None and banco.chamadas_claude_hoje() >= cfg.max_claude_calls_dia:
+            usar = None
+            if not teto_avisado:
+                banco.registrar_evento(lote_id, "fallback_modelo", "teto diário de chamadas ao Claude atingido")
+                teto_avisado = True
+        if usar is not None:
+            banco.registrar_evento(lote_id, "chamada_claude", cobranca_id=c.id)
+        email = montar_email(c, usar)
+        if email.fallback:
+            banco.registrar_evento(lote_id, "fallback_modelo", email.fallback, cobranca_id=c.id)
+        try:
+            caminho = _gravar_eml(pasta, c, email, cfg.smtp_from)
+        except (OSError, ValueError) as erro:
+            banco.transicionar(c.id, Estado.ERRO, etapa_falha="rascunho", detalhe=str(erro)[:200])
+            resultado.erros += 1
+            continue
+        with banco.transacao():
+            banco.salvar_envio(c.id, str(caminho), email.assunto, email.origem)
+            banco.transicionar(c.id, Estado.RASCUNHO, detalhe=f"origem={email.origem}")
+        resultado.gerados += 1
+        if email.origem == "claude":
+            resultado.pelo_claude += 1
+        else:
+            resultado.modelo_fixo += 1
+    return resultado

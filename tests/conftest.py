@@ -101,3 +101,16 @@ def escrever_csv(tmp_path):
         return caminho
 
     return _escrever
+
+
+@pytest.fixture
+def lote_emitido(banco, cfg, fazer_linha, lote_com):
+    from boletos.gateway.fake import FakeGateway
+    from boletos.lote import emitir
+
+    def _fazer(n=3, linhas=None):
+        lote = lote_com(linhas or [fazer_linha(i) for i in range(1, n + 1)])
+        emitir(banco, FakeGateway(), lote, cfg, dormir=lambda segundos: None)
+        return lote
+
+    return _fazer
