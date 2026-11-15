@@ -1,0 +1,26 @@
+nome,documento,email,valor,vencimento,competencia,descricao
+Larissa Moura,15881399803,cliente01@exemplo.test,"3.126,00",23/08/2027,2026-11,
+Mariana Nogueira Consultoria,730.911.417-56,cliente02@exemplo.test,"1.677,00",01/04/2027,2026-11,Manutenção mensal
+Beatriz Ribeiro Serviços,55681518817,cliente03@exemplo.test,"3.640,00",25/02/2027,2026-11,
+Paulo Teixeira Serviços,40.557.616/0001-82,cliente04@exemplo.test,"1.792,50",12/02/2027,2026-11,
+Helena Souza,97684697811,cliente05@exemplo.test,"3.186,50",08/04/2027,2026-11,Plano básico
+Carlos Nogueira Serviços,081.967.273-48,cliente06@exemplo.test,"1.078,00",20/09/2027,2026-11,
+Beatriz Souza Ltda,64887663412,cliente07@exemplo.test,"2.735,50",01/03/2027,2026-11,
+Helena Nogueira Serviços,78.753.477/0001-35,cliente08@exemplo.test,"2.769,00",26/09/2027,2026-11,Mensalidade de novembro
+Larissa Nogueira Ltda,45717847246,cliente09@exemplo.test,"3.749,50",30/04/2027,2026-11,Assinatura anual (parcela)
+Otávio Moura,513.627.010-17,cliente10@exemplo.test,"2.549,00",26/01/2027,2026-11,Plano básico
+Tiago Moura,31908452048,cliente11@exemplo.test,"2.875,00",23/08/2027,2026-11,Plano básico
+Carlos Cardoso ME,83.792.984/0001-18,cliente12@exemplo.test,"3.258,50",22/02/2027,2026-11,
+Carlos Cardoso Ltda,48662836020,cliente13@exemplo.test,"3.465,00",10/01/2027,2026-11,Manutenção mensal
+Carlos Nogueira Serviços,500.875.475-03,cliente14@exemplo.test,"2.583,50",03/10/2027,2026-11,Plano básico
+Rafael Lima,29836957944,cliente15@exemplo.test,"189,50",07/07/2027,2026-11,Plano básico
+Juliana Teixeira ME,20.807.370/0001-42,cliente16@exemplo.test,"3.714,00",05/09/2027,2026-11,Plano básico
+Beatriz Pereira Consultoria,22646861621,cliente17@exemplo.test,"1.129,00",14/03/2027,2026-11,Assinatura anual (parcela)
+Carlos Teixeira,764.725.877-01,cliente18@exemplo.test,"3.392,50",04/05/2027,2026-11,Mensalidade de novembro
+Mariana Barros ME,33017568245,cliente19@exemplo.test,"2.351,50",13/06/2027,2026-11,
+Paulo Ribeiro,83.194.893/0001-80,cliente20@exemplo.test,"2.795,50",01/05/2027,2026-11,
+Larissa Moura,15881399800,ruim01@exemplo.test,"100,00",23/08/2027,2026-11,
+Larissa Moura,21416210547,ruim02@exemplo.test,"100,00",14/11/2026,2026-11,
+Larissa Moura,21854914588,ruim03@exemplo.test,"10,999",23/08/2027,2026-11,
+Larissa Moura,24410646060,sem-arroba.exemplo.test,"100,00",23/08/2027,2026-11,
+Beatriz Ribeiro Serviços,55681518817,cliente03@exemplo.test,"3.640,00",25/02/2027,2026-11,
