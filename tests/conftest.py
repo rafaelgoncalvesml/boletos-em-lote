@@ -91,3 +91,13 @@ def lote_com(banco):
         return lote_id
 
     return _criar
+
+
+@pytest.fixture
+def escrever_csv(tmp_path):
+    def _escrever(linhas, nome="clientes.csv", cabecalho="nome,documento,email,valor,vencimento,competencia,descricao"):
+        caminho = tmp_path / nome
+        caminho.write_text("\n".join([cabecalho, *linhas]) + "\n", encoding="utf-8")
+        return caminho
+
+    return _escrever
