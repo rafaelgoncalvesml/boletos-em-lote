@@ -4,7 +4,8 @@ from datetime import date
 import pytest
 
 from boletos.config import Config
-from boletos.models import Cobranca, Estado, LinhaValida
+from boletos.models import Cobranca, Estado, LinhaValida, chave_da_linha
+from boletos.store.db import Banco
 
 HOJE = date(2026, 11, 15)
 CPF_1 = "11144477735"
@@ -72,3 +73,21 @@ def fazer_cobranca():
         return replace(base, **mudancas)
 
     return _fazer
+
+
+@pytest.fixture
+def banco(tmp_path):
+    b = Banco.abrir(tmp_path / "teste.db")
+    yield b
+    b.close()
+
+
+@pytest.fixture
+def lote_com(banco):
+    def _criar(linhas):
+        lote_id = banco.criar_lote("teste.csv", "h" * 64, len(linhas), 0)
+        for linha in linhas:
+            banco.inserir_cobranca(lote_id, linha, chave_da_linha(linha))
+        return lote_id
+
+    return _criar
