@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+import logging
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
 
 from boletos.config import Config
+from boletos.erros import CredencialRecusada, EntradaRecusada, LotePausado
+from boletos.gateway.base import BillingGateway, ErroCredencial, ErroPermanente, ErroTemporario
 from boletos.ingest.planilha import ler_planilha
-from boletos.models import Cobranca, LinhaValida, Rejeicao, chave_da_linha
+from boletos.models import Cliente, Cobranca, Emissao, Estado, LinhaValida, Rejeicao, chave_da_linha
 from boletos.store.db import Banco
 from boletos.validation.regras import validar_linha
+
+log = logging.getLogger("boletos")
 
 
 @dataclass(frozen=True)
@@ -131,3 +138,106 @@ def importar(banco: Banco, caminho: Path, cfg: Config, hoje: date, *, dry_run: b
     return ResultadoImportacao(
         lote_id, analise.linhas_lidas, criadas, existentes, len(criadas), analise.rejeicoes, avisos, repetido, False
     )
+
+
+ESPERAS_S = (1, 3, 9)
+
+
+@dataclass
+class ResultadoEmissao:
+    emitidas: int = 0
+    erros: int = 0
+    pausado: bool = False
+
+
+def _com_repeticao(acao: Callable[[], str], dormir: Callable[[float], None]) -> str:
+    ultimo: ErroTemporario | None = None
+    for espera in (0, *ESPERAS_S):
+        if espera:
+            dormir(espera)
+        try:
+            return acao()
+        except ErroTemporario as erro:
+            ultimo = erro
+    raise ultimo
+
+
+def _emitir_com_tentativas(gw: BillingGateway, cobranca: Cobranca, dormir: Callable[[float], None]) -> Emissao:
+    ultimo: ErroTemporario | None = None
+    for espera in (0, *ESPERAS_S):
+        if espera:
+            dormir(espera)
+        try:
+            if espera:  # RN-11: antes de repetir, confere se o boleto já nasceu
+                achada = gw.buscar_por_referencia(cobranca.chave_idem)
+                if achada is not None:
+                    return achada
+            return gw.emitir(cobranca)
+        except ErroTemporario as erro:
+            ultimo = erro
+    raise ultimo
+
+
+def _emitir_uma(banco: Banco, gw: BillingGateway, c: Cobranca, dormir: Callable[[float], None]) -> None:
+    if c.id_cobranca_gw and c.link_boleto:  # reprocessamento: o boleto já existe no provedor
+        banco.transicionar(c.id, Estado.EMITIDA, detalhe="boleto já existia no provedor")
+        return
+    id_cliente = c.id_cliente_gw or banco.id_cliente_por_doc(c.cliente_doc)
+    if not id_cliente:
+        cliente = Cliente(c.cliente_nome, c.cliente_doc, c.cliente_email)
+        id_cliente = _com_repeticao(lambda: gw.criar_cliente(cliente), dormir)
+    banco.definir_cliente_gw(c.id, id_cliente)
+    emissao = _emitir_com_tentativas(gw, replace(c, id_cliente_gw=id_cliente), dormir)
+    banco.transicionar(
+        c.id,
+        Estado.EMITIDA,
+        id_cliente_gw=id_cliente,
+        id_cobranca_gw=emissao.id_gw,
+        link_boleto=emissao.link,
+        linha_digitavel=emissao.linha_digitavel,
+        detalhe=f"boleto {emissao.id_gw}",
+    )
+
+
+def emitir(
+    banco: Banco,
+    gateway: BillingGateway,
+    lote_id: int,
+    cfg: Config,
+    *,
+    retomar: bool = False,
+    dormir: Callable[[float], None] = time.sleep,
+) -> ResultadoEmissao:
+    if banco.lote_pausado(lote_id):
+        if not retomar:
+            raise LotePausado("O lote está pausado por falhas seguidas. Confira o provedor e use --retomar.")
+        banco.registrar_evento(lote_id, "lote_retomado")
+    resultado = ResultadoEmissao()
+    seguidas = 0
+    for i, c in enumerate(banco.listar(lote_id, Estado.VALIDADA)):
+        if i > 0 and cfg.pausa_entre_req_ms:
+            dormir(cfg.pausa_entre_req_ms / 1000)
+        try:
+            _emitir_uma(banco, gateway, c, dormir)
+            resultado.emitidas += 1
+            seguidas = 0
+        except ErroCredencial as erro:
+            banco.registrar_evento(lote_id, "credencial_recusada", str(erro), cobranca_id=c.id)
+            raise CredencialRecusada("O provedor recusou a chave de API. Confira ASAAS_API_KEY.") from erro
+        except (ErroPermanente, ErroTemporario) as erro:
+            banco.transicionar(c.id, Estado.ERRO, etapa_falha="emitir", detalhe=str(erro))
+            log.warning("cobrança %s falhou na emissão: %s", c.id, erro)
+            resultado.erros += 1
+            seguidas += 1
+            if seguidas >= cfg.falhas_para_pausar:
+                banco.registrar_evento(lote_id, "lote_pausado", f"{seguidas} falhas seguidas")
+                resultado.pausado = True
+                break
+    return resultado
+
+
+def reprocessar(banco: Banco, cobranca_id: int) -> Cobranca:
+    c = banco.obter(cobranca_id)
+    if c.estado != Estado.ERRO:
+        raise EntradaRecusada(f"A cobrança {cobranca_id} está em {c.estado.value}; só cobrança em erro é reprocessada.")
+    return banco.transicionar(cobranca_id, Estado.VALIDADA, detalhe="reprocessar")
