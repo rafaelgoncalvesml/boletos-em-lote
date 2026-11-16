@@ -1,6 +1,6 @@
 # Decisões
 
-Uma entrada por decisão, com o motivo e o que ficou de fora. As regras citadas (RN-nn) vêm da planta em `docs/planta-v0.1.pdf`. Os ajustes (A1, A2...) e as interpretações (I2, I5...) vêm da especificação e do plano em `docs/superpowers/`.
+Uma entrada por decisão, com o motivo e o que ficou de fora. As regras citadas (RN-nn) vêm da planta em `docs/planta-v0.1.pdf`. Os ajustes (A1, A2...) e as interpretações (I2, I5...) vêm da especificação em `docs/especificacao.md`.
 
 ## Idempotência por chave e consulta por referência (RN-09 e RN-11)
 
@@ -73,7 +73,7 @@ Limite conhecido: se alguém trocar o valor ou o link no `.eml`, nada pega.
 
 - Gateway fake sem estado (I8). `--gateway fake` é em memória e não guarda nada entre execuções. Serve à demo e aos testes.
 - Nome local do SMTP resolvido uma vez por remetente. `socket.getfqdn()` levava cerca de 0,85 s por chamada no Windows, duas por e-mail. O fluxo completo pela CLI caiu de 35 s para 1,8 s, e um lote de 500 não perde mais uns 7 minutos. O nome é o mesmo durante o lote.
-- `ruff` com linha de 120 colunas. O código do plano já usava linhas desse tamanho.
+- `ruff` com linha de 120 colunas. O código já nasceu com linhas desse tamanho.
 - `docs/` fora do `ruff`. O ruff 0.17 reformata blocos de código dentro de arquivos `.md`.
 - Demo com `PYTHONIOENCODING=utf-8`. No Windows, a saída da CLI em pipe sai em cp1252 sem isso.
 

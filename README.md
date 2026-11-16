@@ -1,10 +1,32 @@
 # boletos-em-lote
 
+[![ci](https://github.com/rafaelgoncalvesml/boletos-em-lote/actions/workflows/ci.yml/badge.svg)](https://github.com/rafaelgoncalvesml/boletos-em-lote/actions/workflows/ci.yml)
+![python](https://img.shields.io/badge/python-3.12+-blue)
+![licença](https://img.shields.io/badge/licen%C3%A7a-MIT-green)
+
 Emitir boleto um a um no painel do provedor toma tempo e abre espaço para erro de digitação e cobrança em duplicidade. Este projeto lê uma planilha de clientes, valida, emite os boletos no sandbox do Asaas, prepara o e-mail de cada cliente como rascunho e deixa o envio na mão de quem aprova.
 
 > Todos os dados deste repositório são fictícios. Os e-mails de exemplo usam o domínio `.test` e o provedor de pagamento é o sandbox do Asaas. Não use com dados reais de clientes.
 
-<!-- GIF da demonstração: gravar depois de rodar scripts/demo.py -->
+Saída real da demonstração (trecho):
+
+```
+$ boletos importar demo/clientes.csv
+25 linhas lidas, 20 cobranças criadas, 4 rejeitadas.
+  rejeitada: linha 22, coluna documento: dígitos verificadores do documento não conferem
+  rejeitada: linha 23, coluna vencimento: vencimento precisa ser a partir de amanhã
+  rejeitada: linha 24, coluna valor: valor com mais de duas casas decimais
+  rejeitada: linha 25, coluna email: e-mail inválido
+  aviso: linha 26 repete a linha 4 e foi ignorada
+
+$ boletos emitir --lote 1
+Cobranças por estado:
+- emitida: 20
+Valor total emitido: R$ 52.057,00
+
+$ boletos aprovar --lote 1
+20 cobranças aprovadas.
+```
 
 ## Rodar a demonstração
 
@@ -112,7 +134,3 @@ Também vale saber:
 - O gateway fake não guarda estado entre execuções. Serve à demonstração e aos testes.
 - A planilha de exemplo usa datas relativas ao dia em que foi gerada. Gere de novo com `uv run python scripts/gerar_exemplo.py` quando os vencimentos passarem.
 - O texto editado à mão num `.eml` não passa pelo guard.
-
-## Tópicos do repositório
-
-python, automation, billing, boleto, claude, anthropic

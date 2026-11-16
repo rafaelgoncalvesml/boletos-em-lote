@@ -2,7 +2,7 @@
 
 Data: 2026-11-15
 Base: `docs/planta-v0.1.pdf` (planta de produção v0.1, de 10/11/2026)
-Estado: aguardando revisão do dono do projeto. Nada implementado.
+Estado: implementada na versão 0.1.
 
 ## 1. Propósito
 
