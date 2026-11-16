@@ -3,6 +3,7 @@ from dataclasses import replace
 import pytest
 
 from boletos.erros import CredencialRecusada, EntradaRecusada, LotePausado
+from boletos.gateway.base import ErroTemporario
 from boletos.gateway.fake import FakeGateway
 from boletos.lote import emitir, reprocessar
 from boletos.models import Estado
@@ -37,12 +38,55 @@ def test_emite_todas_e_pausa_entre_requisicoes(banco, cfg, fazer_linha, lote_com
     assert c.id_cobranca_gw and c.link_boleto and c.linha_digitavel and c.id_cliente_gw
 
 
-def test_rn11_reexecutar_nao_cria_cobranca_nova_no_gateway(banco, cfg, fazer_linha, lote_com, dormir):
-    lote = lote_com(_linhas(fazer_linha, 3))
+def test_rn11_interrupcao_entre_o_post_e_o_commit_nao_duplica_o_boleto(
+    banco, cfg, fazer_linha, lote_com, dormir, monkeypatch
+):
+    lote = lote_com(_linhas(fazer_linha, 1))
     gw = FakeGateway()
-    emitir(banco, gw, lote, cfg, dormir=dormir)
+    original = banco.transicionar
+
+    def cai_uma_vez(*args, **kwargs):
+        monkeypatch.setattr(banco, "transicionar", original)
+        raise KeyboardInterrupt
+
+    # o gateway já criou o boleto quando o processo morre, antes de gravar a emissão
+    monkeypatch.setattr(banco, "transicionar", cai_uma_vez)
+    with pytest.raises(KeyboardInterrupt):
+        emitir(banco, gw, lote, cfg, dormir=dormir)
+    assert gw.total_emitido == 1 and banco.contar_por_estado(lote) == {"validada": 1}
+
     res = emitir(banco, gw, lote, cfg, dormir=dormir)
-    assert res.emitidas == 0 and gw.total_emitido == 3
+    assert res.emitidas == 1 and gw.total_emitido == 1
+    assert banco.listar(lote)[0].id_cobranca_gw == "pay_fake_00001"
+
+
+def test_rn11_reprocessar_depois_de_esgotar_as_tentativas_nao_duplica_o_boleto(
+    banco, cfg, fazer_linha, lote_com, dormir
+):
+    lote = lote_com(_linhas(fazer_linha, 1))
+    gw = FakeGateway(["temp", "temp", "temp", "cair_apos_criar"])
+    emitir(banco, gw, lote, cfg, dormir=dormir)
+    assert gw.total_emitido == 1
+    for c in banco.listar(lote):
+        if c.estado == Estado.ERRO:
+            reprocessar(banco, c.id)
+    emitir(banco, gw, lote, cfg, dormir=dormir)
+    assert gw.total_emitido == 1
+    assert banco.contar_por_estado(lote) == {"emitida": 1}
+
+
+def test_rn11_consulta_final_falhando_mantem_o_erro_da_emissao(banco, cfg, fazer_linha, lote_com, dormir):
+    class BuscaFora(FakeGateway):
+        def buscar_por_referencia(self, ref):
+            if self.chamadas_emitir == 4:
+                raise ErroTemporario("busca fora do ar")
+            return super().buscar_por_referencia(ref)
+
+    lote = lote_com(_linhas(fazer_linha, 1))
+    gw = BuscaFora(["temp"] * 4)
+    res = emitir(banco, gw, lote, cfg, dormir=dormir)
+    assert res.erros == 1 and gw.chamadas_emitir == 4
+    assert "timeout simulado" in banco.motivo_erro(banco.listar(lote)[0].id)
 
 
 def test_rn12_so_validadas_sao_emitidas(banco, cfg, fazer_linha, lote_com, dormir):
@@ -78,7 +122,7 @@ def test_rn15_timeout_repete_com_espera_crescente_e_consulta_antes(banco, cfg, f
     gw = FakeGateway(["temp", "temp"])
     res = emitir(banco, gw, lote, cfg, dormir=dormir)
     assert res.emitidas == 1 and gw.total_emitido == 1
-    assert dormir.esperas == [1, 3] and gw.chamadas_buscar == 2
+    assert dormir.esperas == [1, 3] and gw.chamadas_buscar == 3
 
 
 def test_rn15_esgota_as_tentativas_e_marca_erro(banco, cfg, fazer_linha, lote_com, dormir):

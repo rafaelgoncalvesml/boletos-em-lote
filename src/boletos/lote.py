@@ -172,13 +172,21 @@ def _emitir_com_tentativas(gw: BillingGateway, cobranca: Cobranca, dormir: Calla
         if espera:
             dormir(espera)
         try:
-            if espera:  # RN-11: antes de repetir, confere se o boleto já nasceu
-                achada = gw.buscar_por_referencia(cobranca.chave_idem)
-                if achada is not None:
-                    return achada
+            # RN-11: consulta antes de todo POST, o primeiro inclusive. Uma execução interrompida entre o POST
+            # e o commit, ou um reprocessar depois de tentativas esgotadas, deixa um boleto já criado no provedor.
+            achada = gw.buscar_por_referencia(cobranca.chave_idem)
+            if achada is not None:
+                return achada
             return gw.emitir(cobranca)
         except ErroTemporario as erro:
             ultimo = erro
+    # a última tentativa pode ter criado o boleto e perdido a resposta
+    try:
+        achada = gw.buscar_por_referencia(cobranca.chave_idem)
+    except ErroTemporario:
+        raise ultimo from None
+    if achada is not None:
+        return achada
     raise ultimo
 
 
