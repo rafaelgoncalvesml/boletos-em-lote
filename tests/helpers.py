@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from boletos.mail.composer import Texto
 
-TEXTO_OK = Texto(saudacao="Olá, Mariana!", contexto="Segue a cobrança da sua mensalidade de novembro.")
+TEXTO_OK = Texto(saudacao="Olá, Mariana!", contexto="Segue a cobrança da sua mensalidade.")
 
 
 class RedatorFalso:
