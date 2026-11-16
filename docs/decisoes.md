@@ -4,7 +4,7 @@ Uma entrada por decisão, com o motivo e o que ficou de fora. As regras citadas 
 
 ## Idempotência por chave e consulta por referência (RN-09 e RN-11)
 
-Cada cobrança tem uma chave, `sha256(documento | competencia | valor_cent | vencimento)`, com índice único no banco. A mesma chave vai como referência externa no gateway. Se uma emissão der timeout ou erro 5xx, o sistema consulta o gateway por essa referência antes de tentar de novo e só reemite se não achar nada.
+Cada cobrança tem uma chave, `sha256(documento | competencia | valor_cent | vencimento)`, com índice único no banco. A mesma chave vai como referência externa no gateway. Antes de cada emissão o sistema consulta o gateway por essa referência e só emite se não achar nada (ver a entrada sobre a consulta antes da primeira emissão).
 
 Motivo: o caso ruim é o gateway criar o boleto e a resposta se perder. Reexecutar sem a consulta cobraria o cliente duas vezes.
 Descartado: guardar só o id devolvido pelo gateway, que não existe justamente quando a resposta se perde; e confiar na unicidade da referência no Asaas, que a documentação não promete (ver abaixo). Por isso a chave é um hash dos quatro campos e o código usa o primeiro resultado da busca.
@@ -26,6 +26,20 @@ Descartado: bloquear. Duas cobranças legítimas na mesma competência existem (
 O envio exige duas coisas: a cobrança estar `aprovada` (só `aprovar` faz isso) e o comando levar `--confirmar`. Sem a flag, `enviar` só lista os destinatários mascarados.
 Motivo: e-mail é ação externa e não tem volta. O padrão é não enviar.
 Descartado: uma etapa só (aprovar já enviando) e confirmação interativa, que atrapalharia scripts e testes.
+
+## Consulta ao provedor antes da primeira emissão (RN-11)
+
+`_emitir_com_tentativas` consulta o gateway pela referência antes de todo POST, inclusive o primeiro, e faz uma última consulta antes de marcar `erro` quando as tentativas acabam em erro temporário. Se essa última consulta também falhar, vale o erro da emissão.
+
+Motivo: a consulta só entre as tentativas deixava dois caminhos abertos. Um processo interrompido depois do POST e antes do commit deixava a cobrança em `validada` com o boleto já criado, e a reexecução emitia outro. O mesmo acontecia quando a última tentativa criava o boleto e dava timeout, e o operador rodava `reprocessar`. O Asaas não deduplica pela referência, então seriam dois boletos para o mesmo cliente.
+Custo: um GET a mais por cobrança.
+Descartado: gravar um marcador "tentativa iniciada" antes do POST e consultar só quando ele existir. O marcador não fecha a janela entre o POST e o commit, e ainda exigiria tratar o caso de o marcador ter sido gravado sem o POST ter saído.
+
+## Guard mais restrito sobre o texto do Claude
+
+O guard antigo só pegava `R$`, valores no formato `1.250,00`, URLs e datas numéricas. "1.500 reais", "10 de dezembro" e "pague pelo Pix" passavam. Agora `saudacao` e `contexto` são reprovados se tiverem qualquer dígito, `@`, ou uma destas palavras inteiras (sem diferenciar maiúsculas): reais, real, pix, transferência, transferir, transfere, depósito, ted, banco, bancário e bancária, e os doze meses. O texto fixo do template não passa por essa conferência. O prompt de sistema também pede ao Claude que evite esses itens.
+
+Um falso positivo só custa o fallback para o modelo fixo, que é um e-mail correto, só menos personalizado. Ficaram de fora "conta" e "doc", comuns demais em frases normais.
 
 ## Tentativas em `lote.py`, não no gateway (I2)
 

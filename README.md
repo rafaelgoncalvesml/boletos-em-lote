@@ -50,9 +50,9 @@ Os estados da cobrança e o que cada comando lê e grava estão em [docs/fluxo.m
 
 ## Decisões de design
 
-**Idempotência.** Cada cobrança tem uma chave calculada a partir de documento, competência, valor e vencimento, com índice único no banco. A mesma chave vai como referência externa no provedor. Reexecutar um lote não cria cobrança nova, e depois de um timeout o sistema consulta o provedor pela referência antes de emitir de novo.
+**Idempotência.** Cada cobrança tem uma chave calculada a partir de documento, competência, valor e vencimento, com índice único no banco. A mesma chave vai como referência externa no provedor. Antes de cada emissão o sistema consulta o provedor pela referência, então reexecutar um lote, mesmo depois de uma interrupção ou de um timeout, não cria cobrança nova.
 
-**Guard do e-mail.** O Claude escreve só a saudação e um parágrafo curto. Valor, vencimento, descrição e link entram por template. Um guard confere o que o Claude escreveu: se aparecer valor em reais, data ou URL, ou se o texto final perder o valor, o vencimento ou o link, o e-mail usa o modelo fixo. Se o Claude falhar ou o teto diário de chamadas acabar, o lote segue com o modelo fixo.
+**Guard do e-mail.** O Claude escreve só a saudação e um parágrafo curto. Valor, vencimento, descrição e link entram por template. Um guard confere o que o Claude escreveu: se aparecer valor em reais, data, URL, número, e-mail ou palavra de pagamento (pix, banco, mês e parecidas), ou se o texto final perder o valor, o vencimento ou o link, o e-mail usa o modelo fixo. Se o Claude falhar ou o teto diário de chamadas acabar, o lote segue com o modelo fixo.
 
 **Aprovação humana.** Nenhum e-mail sai sem `aprovar` e sem `--confirmar`. Sem a flag, `enviar` só lista os destinatários, com o e-mail mascarado.
 
