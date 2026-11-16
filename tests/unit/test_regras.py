@@ -79,6 +79,16 @@ def test_rn07_email():
             validar_email(ruim)
 
 
+@pytest.mark.parametrize("ruim", ["ana,outra@golpe.test", "ana<x>@b.test", "ana;b@golpe.test", '"ana"@b.test'])
+def test_rn07_email_que_o_cabecalho_to_leria_como_outro_destinatario_e_recusado(ruim):
+    with pytest.raises(ErroCampo):
+        validar_email(ruim)
+
+
+def test_rn07_email_comum_com_ponto_mais_e_hifen_passa():
+    assert validar_email("ana.souza+boleto@mail-exemplo.com.br") == "ana.souza+boleto@mail-exemplo.com.br"
+
+
 def test_rn02_documento_aceita_mascara_e_guarda_so_digitos():
     assert parse_documento("111.444.777-35") == "11144477735"
     assert parse_documento("11.222.333/0001-81") == "11222333000181"

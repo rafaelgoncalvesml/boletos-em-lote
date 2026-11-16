@@ -1,0 +1,8 @@
+Olá, $nome.
+
+Segue o boleto referente a $descricao.
+Valor: $valor
+Vencimento: $vencimento
+Link do boleto: $link
+
+Se já pagou, desconsidere esta mensagem.

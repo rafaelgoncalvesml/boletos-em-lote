@@ -70,11 +70,16 @@ def validar_competencia(texto: str) -> str:
     return t
 
 
+# vírgula, ponto e vírgula, <>, () e aspas fariam o cabeçalho To ler outro destinatário
+_PARTE_EMAIL = r"[^@\s,;<>()\[\]\":\\]+"
+_EMAIL = re.compile(rf"{_PARTE_EMAIL}@{_PARTE_EMAIL}\.{_PARTE_EMAIL}")
+
+
 def validar_email(texto: str) -> str:
     t = texto.strip()
     if len(t) > 254:
         raise ErroCampo("email", "e-mail com mais de 254 caracteres")
-    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", t):
+    if not _EMAIL.fullmatch(t):
         raise ErroCampo("email", "e-mail inválido")
     return t
 

@@ -4,7 +4,8 @@ from datetime import date
 import pytest
 
 from boletos.config import Config
-from boletos.models import Cobranca, Estado, LinhaValida
+from boletos.models import Cobranca, Estado, LinhaValida, chave_da_linha
+from boletos.store.db import Banco
 
 HOJE = date(2026, 11, 15)
 CPF_1 = "11144477735"
@@ -70,5 +71,46 @@ def fazer_cobranca():
             atualizado_em="2026-11-15T10:00:00+00:00",
         )
         return replace(base, **mudancas)
+
+    return _fazer
+
+
+@pytest.fixture
+def banco(tmp_path):
+    b = Banco.abrir(tmp_path / "teste.db")
+    yield b
+    b.close()
+
+
+@pytest.fixture
+def lote_com(banco):
+    def _criar(linhas):
+        lote_id = banco.criar_lote("teste.csv", "h" * 64, len(linhas), 0)
+        for linha in linhas:
+            banco.inserir_cobranca(lote_id, linha, chave_da_linha(linha))
+        return lote_id
+
+    return _criar
+
+
+@pytest.fixture
+def escrever_csv(tmp_path):
+    def _escrever(linhas, nome="clientes.csv", cabecalho="nome,documento,email,valor,vencimento,competencia,descricao"):
+        caminho = tmp_path / nome
+        caminho.write_text("\n".join([cabecalho, *linhas]) + "\n", encoding="utf-8")
+        return caminho
+
+    return _escrever
+
+
+@pytest.fixture
+def lote_emitido(banco, cfg, fazer_linha, lote_com):
+    from boletos.gateway.fake import FakeGateway
+    from boletos.lote import emitir
+
+    def _fazer(n=3, linhas=None):
+        lote = lote_com(linhas or [fazer_linha(i) for i in range(1, n + 1)])
+        emitir(banco, FakeGateway(), lote, cfg, dormir=lambda segundos: None)
+        return lote
 
     return _fazer

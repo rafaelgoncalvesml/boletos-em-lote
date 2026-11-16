@@ -50,3 +50,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+# Typer usa Option/Argument como valor padrão por design
+extend-immutable-calls = ["typer.Argument", "typer.Option"]
