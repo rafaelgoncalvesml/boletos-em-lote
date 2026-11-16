@@ -131,3 +131,28 @@ def test_boleto_sem_link_e_erro_temporario(fazer_cobranca):
 
     with pytest.raises(ErroTemporario, match="link"):
         _gw(handler).emitir(fazer_cobranca())
+
+
+@pytest.mark.parametrize(
+    "resposta",
+    [
+        httpx.Response(200, json={"sem_id": True}),
+        httpx.Response(200, json=["inesperado"]),
+        httpx.Response(200, text="<html>manutenção</html>"),
+    ],
+)
+def test_resposta_2xx_malformada_e_erro_temporario_sem_o_corpo(resposta, fazer_cobranca):
+    gw = _gw(lambda req: resposta)
+    with pytest.raises(ErroTemporario) as e:
+        gw.criar_cliente(Cliente("Ana", "11144477735", "ana@exemplo.test"))
+    assert "manutenção" not in str(e.value)
+    with pytest.raises(ErroTemporario):
+        gw.emitir(fazer_cobranca())
+
+
+def test_pagamento_2xx_sem_id_e_erro_temporario(fazer_cobranca):
+    gw = _gw(lambda req: httpx.Response(200, json={"bankSlipUrl": "https://sandbox.asaas.test/b/1"}))
+    with pytest.raises(ErroTemporario):
+        gw.emitir(fazer_cobranca())
+    with pytest.raises(ErroTemporario):
+        _gw(lambda req: httpx.Response(200, json={"data": [{"bankSlipUrl": "x"}]})).buscar_por_referencia("k")
