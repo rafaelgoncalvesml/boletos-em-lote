@@ -18,3 +18,5 @@ __pycache__/
 .coverage
 dist/
 *.egg-info/
+requirements-audit.txt
+demo/
